@@ -6,10 +6,12 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
-import { Heart, Loader2 } from "lucide-react";
+import { Heart, Loader2, Mail, ArrowLeft } from "lucide-react";
 import { Link } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function Auth() {
   const [searchParams] = useSearchParams();
@@ -18,6 +20,10 @@ export default function Auth() {
   
   const [activeTab, setActiveTab] = useState(mode === "signup" ? "signup" : "signin");
   const [loading, setLoading] = useState(false);
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpValue, setOtpValue] = useState("");
+  const [otpVerified, setOtpVerified] = useState(false);
+  const [debugOtp, setDebugOtp] = useState("");
   
   const [signInEmail, setSignInEmail] = useState("");
   const [signInPassword, setSignInPassword] = useState("");
@@ -38,6 +44,64 @@ export default function Auth() {
     }
   }, [user, role, navigate]);
 
+  const handleSendOtp = async () => {
+    if (!signUpEmail) {
+      toast({ title: "Enter email first", variant: "destructive" });
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("send-otp", {
+        body: { email: signUpEmail, type: "signup" },
+      });
+      
+      if (error) throw error;
+      
+      setOtpSent(true);
+      setDebugOtp(data._debug_otp || "");
+      toast({ 
+        title: "OTP Sent!", 
+        description: `Verification code sent to ${signUpEmail}` 
+      });
+    } catch (error: any) {
+      toast({ 
+        title: "Failed to send OTP", 
+        description: error.message, 
+        variant: "destructive" 
+      });
+    }
+    setLoading(false);
+  };
+
+  const handleVerifyOtp = async () => {
+    if (otpValue.length !== 6) {
+      toast({ title: "Enter complete OTP", variant: "destructive" });
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("verify-otp", {
+        body: { email: signUpEmail, otp: otpValue },
+      });
+      
+      if (error || !data.verified) {
+        throw new Error(data?.error || "OTP verification failed");
+      }
+      
+      setOtpVerified(true);
+      toast({ title: "Email Verified!", description: "You can now complete signup" });
+    } catch (error: any) {
+      toast({ 
+        title: "Invalid OTP", 
+        description: error.message, 
+        variant: "destructive" 
+      });
+    }
+    setLoading(false);
+  };
+
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -56,6 +120,16 @@ export default function Auth() {
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!otpVerified) {
+      toast({ 
+        title: "Verify Email First", 
+        description: "Please verify your email with OTP before signing up",
+        variant: "destructive" 
+      });
+      return;
+    }
+    
     setLoading(true);
     
     const { error } = await signUp(signUpEmail, signUpPassword, signUpName, signUpRole);
@@ -73,6 +147,13 @@ export default function Auth() {
       });
     }
     setLoading(false);
+  };
+
+  const resetOtpFlow = () => {
+    setOtpSent(false);
+    setOtpValue("");
+    setOtpVerified(false);
+    setDebugOtp("");
   };
 
   return (
@@ -95,7 +176,7 @@ export default function Auth() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); resetOtpFlow(); }}>
               <TabsList className="grid w-full grid-cols-2 mb-6">
                 <TabsTrigger value="signin">Sign In</TabsTrigger>
                 <TabsTrigger value="signup">Sign Up</TabsTrigger>
@@ -133,64 +214,114 @@ export default function Auth() {
               </TabsContent>
               
               <TabsContent value="signup">
-                <form onSubmit={handleSignUp} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-name">Full Name</Label>
-                    <Input
-                      id="signup-name"
-                      placeholder="John Doe"
-                      value={signUpName}
-                      onChange={(e) => setSignUpName(e.target.value)}
-                      required
-                    />
+                {!otpSent ? (
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="signup-email">Email</Label>
+                      <Input
+                        id="signup-email"
+                        type="email"
+                        placeholder="you@example.com"
+                        value={signUpEmail}
+                        onChange={(e) => setSignUpEmail(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <Button onClick={handleSendOtp} className="w-full" disabled={loading || !signUpEmail}>
+                      {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      <Mail className="mr-2 h-4 w-4" />
+                      Send Verification Code
+                    </Button>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-email">Email</Label>
-                    <Input
-                      id="signup-email"
-                      type="email"
-                      placeholder="you@example.com"
-                      value={signUpEmail}
-                      onChange={(e) => setSignUpEmail(e.target.value)}
-                      required
-                    />
+                ) : !otpVerified ? (
+                  <div className="space-y-4">
+                    <Button variant="ghost" size="sm" onClick={resetOtpFlow} className="mb-2">
+                      <ArrowLeft className="mr-2 h-4 w-4" />
+                      Change Email
+                    </Button>
+                    <div className="text-center mb-4">
+                      <p className="text-sm text-muted-foreground">
+                        Enter the 6-digit code sent to
+                      </p>
+                      <p className="font-medium">{signUpEmail}</p>
+                      {debugOtp && (
+                        <p className="text-xs text-muted-foreground mt-2 p-2 bg-secondary rounded">
+                          Demo OTP: <span className="font-mono font-bold">{debugOtp}</span>
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex justify-center">
+                      <InputOTP value={otpValue} onChange={setOtpValue} maxLength={6}>
+                        <InputOTPGroup>
+                          <InputOTPSlot index={0} />
+                          <InputOTPSlot index={1} />
+                          <InputOTPSlot index={2} />
+                          <InputOTPSlot index={3} />
+                          <InputOTPSlot index={4} />
+                          <InputOTPSlot index={5} />
+                        </InputOTPGroup>
+                      </InputOTP>
+                    </div>
+                    <Button onClick={handleVerifyOtp} className="w-full" disabled={loading || otpValue.length !== 6}>
+                      {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Verify Code
+                    </Button>
+                    <Button variant="link" onClick={handleSendOtp} disabled={loading} className="w-full">
+                      Resend Code
+                    </Button>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-password">Password</Label>
-                    <Input
-                      id="signup-password"
-                      type="password"
-                      placeholder="••••••••"
-                      value={signUpPassword}
-                      onChange={(e) => setSignUpPassword(e.target.value)}
-                      required
-                      minLength={6}
-                    />
-                  </div>
-                  <div className="space-y-3">
-                    <Label>I want to</Label>
-                    <RadioGroup value={signUpRole} onValueChange={(v) => setSignUpRole(v as "donor" | "ngo")}>
-                      <div className="flex items-center space-x-2 p-3 rounded-lg border border-border hover:bg-secondary/50 cursor-pointer">
-                        <RadioGroupItem value="donor" id="donor" />
-                        <Label htmlFor="donor" className="cursor-pointer flex-1">
-                          <span className="font-medium">Donate to projects</span>
-                          <p className="text-xs text-muted-foreground">Track my donations and see impact</p>
-                        </Label>
-                      </div>
-                      <div className="flex items-center space-x-2 p-3 rounded-lg border border-border hover:bg-secondary/50 cursor-pointer">
-                        <RadioGroupItem value="ngo" id="ngo" />
-                        <Label htmlFor="ngo" className="cursor-pointer flex-1">
-                          <span className="font-medium">Register my NGO</span>
-                          <p className="text-xs text-muted-foreground">Create projects and receive donations</p>
-                        </Label>
-                      </div>
-                    </RadioGroup>
-                  </div>
-                  <Button type="submit" className="w-full" disabled={loading}>
-                    {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Create Account
-                  </Button>
-                </form>
+                ) : (
+                  <form onSubmit={handleSignUp} className="space-y-4">
+                    <div className="text-center mb-4 p-3 bg-success/10 rounded-lg border border-success/20">
+                      <p className="text-sm text-success font-medium">✓ Email verified: {signUpEmail}</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="signup-name">Full Name</Label>
+                      <Input
+                        id="signup-name"
+                        placeholder="John Doe"
+                        value={signUpName}
+                        onChange={(e) => setSignUpName(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="signup-password">Password</Label>
+                      <Input
+                        id="signup-password"
+                        type="password"
+                        placeholder="••••••••"
+                        value={signUpPassword}
+                        onChange={(e) => setSignUpPassword(e.target.value)}
+                        required
+                        minLength={6}
+                      />
+                    </div>
+                    <div className="space-y-3">
+                      <Label>I want to</Label>
+                      <RadioGroup value={signUpRole} onValueChange={(v) => setSignUpRole(v as "donor" | "ngo")}>
+                        <div className="flex items-center space-x-2 p-3 rounded-lg border border-border hover:bg-secondary/50 cursor-pointer">
+                          <RadioGroupItem value="donor" id="donor" />
+                          <Label htmlFor="donor" className="cursor-pointer flex-1">
+                            <span className="font-medium">Donate to projects</span>
+                            <p className="text-xs text-muted-foreground">Track my donations and see impact</p>
+                          </Label>
+                        </div>
+                        <div className="flex items-center space-x-2 p-3 rounded-lg border border-border hover:bg-secondary/50 cursor-pointer">
+                          <RadioGroupItem value="ngo" id="ngo" />
+                          <Label htmlFor="ngo" className="cursor-pointer flex-1">
+                            <span className="font-medium">Register my NGO</span>
+                            <p className="text-xs text-muted-foreground">Create projects and receive donations</p>
+                          </Label>
+                        </div>
+                      </RadioGroup>
+                    </div>
+                    <Button type="submit" className="w-full" disabled={loading}>
+                      {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Create Account
+                    </Button>
+                  </form>
+                )}
               </TabsContent>
             </Tabs>
           </CardContent>

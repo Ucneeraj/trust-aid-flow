@@ -22,6 +22,9 @@ export type Database = {
           id: string
           is_anonymous: boolean
           message: string | null
+          payment_id: string | null
+          payment_method: string | null
+          payment_status: string | null
           project_id: string
         }
         Insert: {
@@ -31,6 +34,9 @@ export type Database = {
           id?: string
           is_anonymous?: boolean
           message?: string | null
+          payment_id?: string | null
+          payment_method?: string | null
+          payment_status?: string | null
           project_id: string
         }
         Update: {
@@ -40,6 +46,9 @@ export type Database = {
           id?: string
           is_anonymous?: boolean
           message?: string | null
+          payment_id?: string | null
+          payment_method?: string | null
+          payment_status?: string | null
           project_id?: string
         }
         Relationships: [
@@ -178,10 +187,14 @@ export type Database = {
           approved_by: string | null
           created_at: string
           description: string | null
+          facebook_url: string | null
           id: string
+          instagram_url: string | null
+          linkedin_url: string | null
           organization_name: string
           registration_number: string | null
           status: Database["public"]["Enums"]["ngo_status"]
+          twitter_url: string | null
           updated_at: string
           user_id: string
           website: string | null
@@ -192,10 +205,14 @@ export type Database = {
           approved_by?: string | null
           created_at?: string
           description?: string | null
+          facebook_url?: string | null
           id?: string
+          instagram_url?: string | null
+          linkedin_url?: string | null
           organization_name: string
           registration_number?: string | null
           status?: Database["public"]["Enums"]["ngo_status"]
+          twitter_url?: string | null
           updated_at?: string
           user_id: string
           website?: string | null
@@ -206,10 +223,14 @@ export type Database = {
           approved_by?: string | null
           created_at?: string
           description?: string | null
+          facebook_url?: string | null
           id?: string
+          instagram_url?: string | null
+          linkedin_url?: string | null
           organization_name?: string
           registration_number?: string | null
           status?: Database["public"]["Enums"]["ngo_status"]
+          twitter_url?: string | null
           updated_at?: string
           user_id?: string
           website?: string | null

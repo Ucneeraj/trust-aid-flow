@@ -43,25 +43,54 @@ export default function AdminDashboard() {
   const { data: pendingNgos = [], isLoading: ngosLoading } = useQuery({
     queryKey: ["pending-ngos"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      // Fetch pending NGOs
+      const { data: ngos, error } = await supabase
         .from("ngo_details")
-        .select("*, profiles(full_name, email)")
+        .select("*")
         .eq("status", "pending")
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return data;
+      
+      // Fetch profiles for these NGOs
+      if (ngos && ngos.length > 0) {
+        const userIds = ngos.map(n => n.user_id);
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("id, full_name, email")
+          .in("id", userIds);
+        
+        // Map profiles to NGOs
+        return ngos.map(ngo => ({
+          ...ngo,
+          profiles: profiles?.find(p => p.id === ngo.user_id) || null,
+        }));
+      }
+      return ngos || [];
     },
   });
 
   const { data: allNgos = [] } = useQuery({
     queryKey: ["all-ngos"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data: ngos, error } = await supabase
         .from("ngo_details")
-        .select("*, profiles(full_name, email)")
+        .select("*")
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return data;
+      
+      if (ngos && ngos.length > 0) {
+        const userIds = ngos.map(n => n.user_id);
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("id, full_name, email")
+          .in("id", userIds);
+        
+        return ngos.map(ngo => ({
+          ...ngo,
+          profiles: profiles?.find(p => p.id === ngo.user_id) || null,
+        }));
+      }
+      return ngos || [];
     },
   });
 
@@ -194,7 +223,7 @@ export default function AdminDashboard() {
                           <div className="flex-1">
                             <h3 className="font-semibold text-lg">{ngo.organization_name}</h3>
                             <p className="text-sm text-muted-foreground mb-2">
-                              Registered by: {(ngo.profiles as any)?.full_name || (ngo.profiles as any)?.email || "Unknown"}
+                              Registered by: {(ngo as any).profiles?.full_name || (ngo as any).profiles?.email || "Unknown"}
                             </p>
                             {ngo.description && (
                               <p className="text-sm text-muted-foreground line-clamp-2 mb-2">{ngo.description}</p>
@@ -258,7 +287,7 @@ export default function AdminDashboard() {
                             <Badge variant={getStatusColor(ngo.status)}>{ngo.status}</Badge>
                           </div>
                           <p className="text-sm text-muted-foreground">
-                            {(ngo.profiles as any)?.email} • {format(new Date(ngo.created_at), 'MMM d, yyyy')}
+                            {(ngo as any).profiles?.email} • {format(new Date(ngo.created_at), 'MMM d, yyyy')}
                           </p>
                         </div>
                         {ngo.status === "approved" && (
