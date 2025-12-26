@@ -11,9 +11,6 @@ interface OtpRequest {
   type: "signup" | "signin";
 }
 
-// Simple in-memory OTP storage (in production, use a proper cache like Redis)
-const otpStore = new Map<string, { otp: string; expiry: number; attempts: number }>();
-
 function generateOTP(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
@@ -30,17 +27,39 @@ serve(async (req) => {
       throw new Error("Email is required");
     }
 
+    // Create Supabase client with service role
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
     const otp = generateOTP();
-    const expiry = Date.now() + 10 * 60 * 1000; // 10 minutes
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-    // Store OTP
-    otpStore.set(email.toLowerCase(), { otp, expiry, attempts: 0 });
+    // Delete any existing OTPs for this email
+    await supabase
+      .from("otp_codes")
+      .delete()
+      .eq("email", email.toLowerCase());
 
-    // For demo purposes, log the OTP (in production, send via email service like Resend)
-    console.log(`OTP for ${email}: ${otp}`);
+    // Store new OTP in database
+    const { error: insertError } = await supabase
+      .from("otp_codes")
+      .insert({
+        email: email.toLowerCase(),
+        otp_code: otp,
+        expires_at: expiresAt.toISOString(),
+        attempts: 0
+      });
+
+    if (insertError) {
+      console.error("Error storing OTP:", insertError);
+      throw new Error("Failed to generate OTP");
+    }
+
+    console.log(`OTP generated for ${email}: ${otp}`);
 
     // In production, integrate with Resend or similar email service
-    // For now, we'll just return success and log the OTP
+    // For now, we return the OTP in response for testing
     
     return new Response(
       JSON.stringify({ 
@@ -65,6 +84,3 @@ serve(async (req) => {
     );
   }
 });
-
-// Export for verification function
-export { otpStore };
